@@ -1,0 +1,62 @@
+---
+title: 'Session 3, Toy Shop With Integer Variables'
+author: "Ralph Asher, ralph@datadrivensupplychain.com"
+date: "8/23/2022"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(tidyverse)
+library(ompr)
+library(ompr.roi)
+library(ROI.plugin.glpk)
+rm(list=ls())
+
+```
+
+We'll use the final example from the first toyshop exercise, but make the decision variables integers.
+
+```{r Toy Shop Using Dataframes}
+
+toyshop_df <- cbind.data.frame(
+  Toy = c("Car", "Train", "Truck", "Airplane"),
+  Time_Required = c(5, 3, 4, 6),
+  Wood_Required = c(1, 1, 1.5, 2),
+  Profit = c(7, 4, 6, 9),
+  stringsAsFactors=FALSE)
+
+toy_type_count <- nrow(toyshop_df)
+
+
+
+toymodel <- MIPModel() %>%
+  add_variable(toys[i], i= 1:toy_type_count, type='integer', lb=0) %>% 
+  add_constraint(sum_expr(toys[i] * toyshop_df$Time_Required[i], i=1:toy_type_count) <= 40) %>%
+  add_constraint(sum_expr(toys[i] * toyshop_df$Wood_Required[i], i=1:toy_type_count) <= 10) %>%
+  set_objective(sum_expr(toys[i] * toyshop_df$Profit[i], i=1:toy_type_count))
+
+
+toymodel
+
+my_solution <- solve_model(toymodel,with_ROI("glpk"))
+
+my_solution
+
+toys_solution <- get_solution(my_solution,toys[i]) %>%
+  dplyr::mutate(Toy = toyshop_df$Toy[i])
+
+
+toys_solution
+
+
+```
+When the decision variables were continuous, the optimal solution was:
+
+5 cars, 0 trains, 0 trucks, and 2.5 airplanes
+objective value: 5*7 + 0*4 + 0*6 + 2.5*9 = 57.5
+
+How does this objective value compare?  How do the solutions compare?
+
+Which is more useful- the continuous decision variable results, or the integer variable results?

@@ -1,0 +1,149 @@
+---
+title: 'Session 2, Toy Shop Linear Program'
+author: "Ralph Asher, ralph@datadrivensupplychain.com"
+date: "8/23/2022"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(tidyverse)
+library(ompr)
+library(ompr.roi)
+library(ROI.plugin.glpk)
+rm(list=ls())
+
+```
+
+First, let's build the Toy Shop LP example in ompr.  We will then expand on it to show the power of ompr.
+
+```{r Toy Shop LP, echo=FALSE}
+
+
+
+toymodel <- MIPModel() %>%
+  add_variable(x, type='continuous', lb=0) %>%
+  add_variable(y, type='continuous', lb=0) %>%
+  add_constraint(5*x + 3*y <= 40) %>%
+  add_constraint(x + y <= 10) %>%
+  set_objective(7*x + 4*y, sense='max')
+
+
+
+#review structure of toymodel
+
+toymodel
+
+
+my_solution <- solve_model(toymodel,with_ROI("glpk"))
+
+my_solution
+
+x_solution <- get_solution(my_solution,x)
+y_solution <- get_solution(my_solution,y)
+
+
+x_solution #should be 8
+y_solution #should be 0
+
+objvalue_calculated <- 7*x_solution + 4*y_solution
+objvalue_solution <- my_solution$objective_value
+
+
+#both objvalue_calculated and objvalue_solution should be 56
+objvalue_calculated
+objvalue_solution
+
+
+```
+
+
+Decision variables can also be declared as vectors.  Now, instead of using x as the decision variable for the number of toy cars, and y as the decision variable for the number of toy trains, we are going to build a model with just one declared decision variable, "toys", with two indices.
+
+toys[1] will refer to cars (instead of x), and toys[2] will refer to trains (instead of y).
+
+We will also now have numeric vectors representing the time required for each toy, the wood required for each toy, and the profit gained from each toy.  In real-world optimization models, vectors of decision variables are much more common than declared single decision variables like x or y.
+
+```{r Toymodel with Vector Inputs, echo=FALSE}
+
+toy_type <- c("Car", "Train")
+time_required <- c(5, 3) #5 hours for cars, 3 hours for trains
+wood_required <- c(1, 1) #1 piece of wood each for toys and trains
+profit <- c(7, 4)
+
+toymodel <- MIPModel() %>%
+  add_variable(toys[i], i= 1:2, type='continuous', lb=0) %>% #index for toys is i.  We have to declare the indices for i. In this case,
+  #since there are two toy types, i is declared as 1 to 2.
+  #this creates two decision variables: toys[1] (representing cars) and toys[2] representing trains
+  
+  #time constraint. 
+  #the sum_expr function in ompr multiplies two vectors together by element,
+  #then sums them all up.
+  
+  #sum_expr(toys[i] * time_required[i], i=1:2) is mathematically equivalent to:
+  # toys[1]*time_required[1] + toys[2]*time_required[2] <= 40
+  # 5*toys[1] + 3*toys[2] <= 40
+  # This has the same effect as our 5*x + 3*y <= 40 constraint in the first model.
+  add_constraint(sum_expr(toys[i] * time_required[i], i=1:2) <= 40) %>%
+  #this next line is equivalent to x + y <= 10 in the first model
+  add_constraint(sum_expr(toys[i] * wood_required[i], i=1:2) <= 10) %>%
+  #the objective is equivalent to 7*x + 4*y in the first model
+  set_objective(sum_expr(toys[i] * profit[i], i=1:2))
+
+#review structure of toymodel
+
+toymodel
+
+
+my_solution <- solve_model(toymodel,with_ROI("glpk"))
+
+my_solution
+
+
+toys_solution <- get_solution(my_solution,toys[i])
+
+#reference the toy_type character vector to add the name of the toy into the solution dataframe
+toys_solution$Toy <- toy_type[toys_solution$i]
+
+
+```
+
+Now that you've seen how vectors can be used in declaring decision variables, setting constraints, and setting objectives, let's expand on the concept.  You can use R data frames or tibbles to prepare data, then reference that dataframe or tibble in building an ompr model. In this next section, we will expand our toy shop's selection to more toys.
+
+```{r Toy Shop Using Dataframes}
+
+toyshop_df <- cbind.data.frame(
+  Toy = c("Car", "Train", "Truck", "Airplane"),
+  Time_Required = c(5, 3, 4, 6),
+  Wood_Required = c(1, 1, 1.5, 2),
+  Profit = c(7, 4, 6, 9),
+  stringsAsFactors=FALSE)
+
+toy_type_count <- nrow(toyshop_df)
+
+#we can now use basically the same model as before, but now reference the toyshop dataframe.
+#Since we declared a variable toy_type_count that represents the number of rows in toyshop_df,
+#we can use toy_type_count in the indexing.
+
+toymodel <- MIPModel() %>%
+  add_variable(toys[i], i= 1:toy_type_count, type='continuous', lb=0) %>% 
+  add_constraint(sum_expr(toys[i] * toyshop_df$Time_Required[i], i=1:toy_type_count) <= 40) %>%
+  add_constraint(sum_expr(toys[i] * toyshop_df$Wood_Required[i], i=1:toy_type_count) <= 10) %>%
+  set_objective(sum_expr(toys[i] * toyshop_df$Profit[i], i=1:toy_type_count))
+
+
+toymodel
+
+my_solution <- solve_model(toymodel,with_ROI("glpk"))
+
+my_solution
+
+toys_solution <- get_solution(my_solution,toys[i]) %>%
+  dplyr::mutate(Toy = toyshop_df$Toy[i])
+
+
+toys_solution
+#what do you notice about this solution?
+```
+

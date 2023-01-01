@@ -1,0 +1,128 @@
+---
+title: 'Session 2, Transportation Problem'
+author: "Ralph Asher, ralph@datadrivensupplychain.com"
+date: "8/23/2022"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(tidyverse)
+library(ompr)
+library(ompr.roi)
+library(ROI.plugin.glpk)
+library(maps)
+library(leaflet)
+library(leaflet.minicharts)
+rm(list=ls())
+
+```
+
+
+```{r Vector & Distance Matrix Setup}
+
+supplier_df <- maps::us.cities %>%
+  dplyr::filter(name %in% c("Chicago IL","New York NY","Los Angeles CA")) %>%
+  dplyr::select(supplier=name,lat,long) %>%
+  dplyr::mutate(Capacity = 20)
+
+customer_df <- maps::us.cities %>%
+  dplyr::filter(name %in% c("Dallas TX","Kansas City MO","Memphis TN","Denver CO")) %>%
+  dplyr::select(customer=name,lat,long) %>%
+  dplyr::mutate(Demand = dplyr::case_when(
+    customer == "Dallas TX" ~ 20,
+    customer == "Denver CO" ~ 10,
+      customer == "Kansas City MO" ~ 7,
+    customer == "Memphis TN" ~ 9))
+    
+
+#leaflet map of suppliers (red) and customers (green)
+
+p1 <- leaflet() %>% addTiles() %>%
+  addCircleMarkers(lng=supplier_df$long,lat=supplier_df$lat,color='red',radius=3) %>%
+  addCircleMarkers(lng=customer_df$long,lat=customer_df$lat,color='green',radius=3) %>%
+  addLegend(position='topright',colors = c('red','green'), labels=c('Supplier','Customer'))
+
+p1
+
+
+
+```
+
+Next create the distance matrix from suppliers to customers.
+
+```{r build distance matrix}
+
+supplier_customer_distance <- geosphere::distm(x=cbind(supplier_df$long,supplier_df$lat),
+                                               y=cbind(customer_df$long,customer_df$lat)) %>%
+  measurements::conv_unit('m','km') %>% round()
+
+row.names(supplier_customer_distance) <- supplier_df$supplier
+colnames(supplier_customer_distance) <- customer_df$customer
+
+
+```
+
+Now build the model.
+
+```{r Transportation Model}
+
+
+supplier_count <- nrow(supplier_df)
+customer_count <- nrow(customer_df)
+
+transport_model <- ompr::MIPModel() %>%
+  add_variable(flow[supplierindex,customerindex],supplierindex=1:supplier_count,
+               customerindex=1:customer_count,type='continuous',lb=0) %>%
+  
+  #constraint: each customer demand must be satisfied
+  add_constraint(sum_expr(flow[supplierindex,customerindex],supplierindex=1:supplier_count) ==
+                   customer_df$Demand[customerindex], customerindex=1:customer_count) %>%
+  
+  #constraint: supplier limited by constraint
+  add_constraint(sum_expr(flow[supplierindex,customerindex],customerindex=1:customer_count) <=
+                   supplier_df$Capacity[supplierindex], supplierindex=1:supplier_count) %>%
+  
+  #objective: minimize total kilometer-units moved
+  set_objective(sum_expr(
+    flow[supplierindex,customerindex] *
+    supplier_customer_distance[supplierindex,customerindex],
+    supplierindex=1:supplier_count, customerindex=1:customer_count),sense='min')
+
+transport_model #check number of variables, and constraints. Do they make sense?
+
+transport_model_soln <- solve_model(transport_model,with_ROI("glpk"))
+
+transport_model_soln
+
+flow_soln <- get_solution(transport_model_soln,flow[supplierindex,customerindex]) %>%
+  dplyr::mutate(
+    Supplier = supplier_df$supplier[supplierindex],
+    Supplier_Lat = supplier_df$lat[supplierindex],
+    Supplier_Lng = supplier_df$long[supplierindex],
+    Customer = customer_df$customer[customerindex],
+    Customer_Lat = customer_df$lat[customerindex],
+    Customer_Lng = customer_df$long[customerindex])
+
+
+
+flow_soln
+flow_soln %>% dplyr::filter(value>0)
+```
+
+Plot flows.
+
+```{r plot flows}
+
+flow_soln <- flow_soln %>% dplyr::filter(value>0)
+
+p2 <- p1 %>% addFlows(
+  lng0= flow_soln$Supplier_Lng, lat0=flow_soln$Supplier_Lat,
+  lng1= flow_soln$Customer_Lng, lat1=flow_soln$Customer_Lat,
+  flow= flow_soln$value, maxThickness = 1)
+  
+
+p2  
+```
+
