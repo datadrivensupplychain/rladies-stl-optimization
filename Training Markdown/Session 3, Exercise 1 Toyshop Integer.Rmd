@@ -40,7 +40,7 @@ toymodel <- MIPModel() %>%
 
 toymodel
 
-my_solution <- solve_model(toymodel,with_ROI("glpk"))
+my_solution <- solve_model(toymodel,with_ROI("glpk",verbose=TRUE))
 
 my_solution
 
