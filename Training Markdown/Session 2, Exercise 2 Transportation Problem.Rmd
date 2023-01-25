@@ -73,16 +73,19 @@ supplier_count <- nrow(supplier_df)
 customer_count <- nrow(customer_df)
 
 transport_model <- ompr::MIPModel() %>%
-  add_variable(flow[supplierindex,customerindex],supplierindex=1:supplier_count,
-               customerindex=1:customer_count,type='continuous',lb=0) %>%
+  add_variable(flow[supplierindex,customerindex],
+               supplierindex=1:supplier_count,
+               customerindex=1:customer_count,
+               type='continuous',lb=0) %>%
   
   #constraint: each customer demand must be satisfied
   add_constraint(sum_expr(flow[supplierindex,customerindex],supplierindex=1:supplier_count) ==
-                   customer_df$Demand[customerindex], customerindex=1:customer_count) %>%
+                   customer_df$Demand[customerindex], 
+                 customerindex=1:customer_count) %>%
   
   #constraint: supplier limited by constraint
-  add_constraint(sum_expr(flow[supplierindex,customerindex],customerindex=1:customer_count) <=
-                   supplier_df$Capacity[supplierindex], supplierindex=1:supplier_count) %>%
+    add_constraint(sum_expr(flow[supplierindex,customerindex],customerindex=1:customer_count) <=
+                     supplier_df$Capacity[supplierindex], supplierindex=1:supplier_count) %>%
   
   #objective: minimize total kilometer-units moved
   set_objective(sum_expr(

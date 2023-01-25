@@ -89,7 +89,7 @@ toymodel <- MIPModel() %>%
   #this next line is equivalent to x + y <= 10 in the first model
   add_constraint(sum_expr(toys[i] * wood_required[i], i=1:2) <= 10) %>%
   #the objective is equivalent to 7*x + 4*y in the first model
-  set_objective(sum_expr(toys[i] * profit[i], i=1:2))
+  set_objective(sum_expr(toys[i] * profit[i], i=1:2),sense='max')
 
 #review structure of toymodel
 
@@ -130,7 +130,7 @@ toymodel <- MIPModel() %>%
   add_variable(toys[i], i= 1:toy_type_count, type='continuous', lb=0) %>% 
   add_constraint(sum_expr(toys[i] * toyshop_df$Time_Required[i], i=1:toy_type_count) <= 40) %>%
   add_constraint(sum_expr(toys[i] * toyshop_df$Wood_Required[i], i=1:toy_type_count) <= 10) %>%
-  set_objective(sum_expr(toys[i] * toyshop_df$Profit[i], i=1:toy_type_count))
+  set_objective(sum_expr(toys[i] * toyshop_df$Profit[i], i=1:toy_type_count),sense='max')
 
 
 toymodel
